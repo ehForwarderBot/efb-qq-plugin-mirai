@@ -2,9 +2,12 @@ import asyncio
 import logging
 
 from ehforwarderbot import Chat
+from mirai_core.models.Event import Message
 from mirai_core.models.Message import Plain, Image, Quote, Face, At, FlashImage, AtAll, Xml, Json, Poke, App
+from mirai_core.models.Types import MessageType
 
 from efb_qq_plugin_mirai.MiraiConfig import MiraiConfig
+from efb_qq_plugin_mirai.MiraiFactory import MiraiFactory
 from efb_qq_plugin_mirai.MsgDecorator import efb_text_simple_wrapper, efb_image_wrapper, efb_unsupported_wrapper
 from efb_qq_plugin_mirai.Utils import download_file, async_download_file
 
@@ -272,12 +275,14 @@ qq_emoji_list = {  # created by JogleLew and jqqqqqqqqqq, optimized based on Tim
 
 class MiraiMessageProcessor:
     @staticmethod
-    async def mirai_Plain(ctx: Plain, chat: Chat):
-        content = ctx.text if ctx.text else "[Content missing]"
+    async def mirai_Plain(ctx: Plain, event: Message, chat: Chat):
+        if not ctx.text:
+            return []
+        content = ctx.text
         return [efb_text_simple_wrapper(content)]
 
     @staticmethod
-    async def mirai_Image(ctx: Image, chat: Chat):
+    async def mirai_Image(ctx: Image, event: Message, chat: Chat):
         logging.getLogger(__name__).info("Start downloading image!")
         try:
             f = await async_download_file(ctx.url)
@@ -288,31 +293,42 @@ class MiraiMessageProcessor:
             return [efb_image_wrapper(f)]
 
     @staticmethod
-    async def mirai_Quote(ctx: Quote, chat: Chat):
+    async def mirai_Quote(ctx: Quote, event: Message, chat: Chat):
         original_message = ""
-        for message in ctx.origin[1:]:
+        for message in ctx.origin:
             if isinstance(message, Plain):
                 original_message += message.text
             elif isinstance(message, Image):
                 original_message += " [Image] "
             elif isinstance(message, Face):
                 original_message += f" [Face {message.faceId}]"
-        return [efb_text_simple_wrapper(original_message)]
+        return [efb_text_simple_wrapper(f"「{original_message}」\n\n")]
 
     @staticmethod
-    async def mirai_At(ctx: At, chat: Chat):
+    async def mirai_At(ctx: At, event: Message, chat: Chat):
         at_list = None
+        if not ctx.display:
+            if event.type == MessageType.GROUP.value:
+                members = await MiraiFactory.instance.async_get_group_member_list(group_id=event.member.group.id,
+                                                                                  no_cache=False)
+                flag = False
+                for member in members:
+                    if int(member['uid']) == int(ctx.target):
+                        ctx.display = f"@{member['name']}"
+                        flag = True
+                        break
+                if not flag:
+                    ctx.display = "@Unknown"
         if MiraiConfig.configs.get('qq', 0) == ctx.target:
-            if not ctx.display:
-                ctx.display = "@me"
+            ctx.display = "@me"
             begin_index = 0
             end_index = len(ctx.display)
             at_list = {(begin_index, end_index): chat.self}
-        print(at_list)
+        logger.debug(at_list)
         return [efb_text_simple_wrapper(ctx.display, at_list)]
 
     @staticmethod
-    async def mirai_Face(ctx: Face, chat: Chat):
+    async def mirai_Face(ctx: Face, event: Message, chat: Chat):
         qq_face = int(ctx.faceId) & 255
         if qq_face in qq_emoji_list:
             return [efb_text_simple_wrapper(qq_emoji_list[qq_face])]
@@ -320,7 +336,7 @@ class MiraiMessageProcessor:
             return [efb_text_simple_wrapper(f"[Face {ctx.faceId}]")]
 
     @staticmethod
-    async def mirai_FlashImage(ctx: FlashImage, chat: Chat):
+    async def mirai_FlashImage(ctx: FlashImage, event: Message, chat: Chat):
         logging.getLogger(__name__).info("Start downloading image!")
         try:
             f = await async_download_file(ctx.url)
@@ -331,7 +347,7 @@ class MiraiMessageProcessor:
             return [efb_image_wrapper(f)]
 
     @staticmethod
-    async def mirai_AtAll(ctx: AtAll, chat: Chat):
+    async def mirai_AtAll(ctx: AtAll, event: Message, chat: Chat):
         content = "@all"
         begin_index = 0
         end_index = len(content)
@@ -339,22 +355,22 @@ class MiraiMessageProcessor:
         return [efb_text_simple_wrapper(content, at_list)]
 
     @staticmethod
-    async def mirai_Xml(ctx: Xml, chat: Chat):
+    async def mirai_Xml(ctx: Xml, event: Message, chat: Chat):
         content = f"[XML]\n{ctx.xml}" if ctx.xml else "[Content missing]"
         return [efb_unsupported_wrapper(content)]
 
     @staticmethod
-    async def mirai_Json(ctx: Json, chat: Chat):
+    async def mirai_Json(ctx: Json, event: Message, chat: Chat):
         content = f"[Json]\n{ctx.json}" if ctx.json else "[Content missing]"
         return [efb_unsupported_wrapper(content)]
 
     @staticmethod
-    async def mirai_App(ctx: App, chat: Chat):
+    async def mirai_App(ctx: App, event: Message, chat: Chat):
         content = f"[App]\n{ctx.content}" if ctx.content else "[Content missing]"
         return [efb_unsupported_wrapper(content)]
 
     @staticmethod
-    async def mirai_Poke(ctx: Poke, chat: Chat):
+    async def mirai_Poke(ctx: Poke, event: Message, chat: Chat):
         content = f"[Poke]\n{ctx.name}" if ctx.name else "[Content missing]"
         at_str = "@me"
         begin_index = len(content)

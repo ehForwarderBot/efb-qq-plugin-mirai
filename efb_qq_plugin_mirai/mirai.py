@@ -22,6 +22,7 @@ from efb_qq_plugin_mirai.ChatMgr import ChatMgr
 from efb_qq_plugin_mirai.CustomTypes import EFBGroupChat, EFBPrivateChat, MiraiFriend, MiraiGroup, EFBGroupMember, \
     MiraiMember
 from efb_qq_plugin_mirai.MiraiConfig import MiraiConfig
+from efb_qq_plugin_mirai.MiraiFactory import MiraiFactory
 from efb_qq_plugin_mirai.MiraiMessageProcessor import MiraiMessageProcessor
 from efb_qq_plugin_mirai.MsgDecorator import efb_text_simple_wrapper
 from efb_qq_plugin_mirai.Utils import process_quote_text
@@ -36,7 +37,7 @@ class mirai(BaseClient):
 
     info_dict = TTLCache(maxsize=2, ttl=600)
 
-    group_member_list = TTLCache(maxsize=20, ttl=3600)
+    group_member_list = TTLCache(maxsize=100, ttl=3600)
     stranger_cache = TTLCache(maxsize=100, ttl=3600)
     shutdown_hook = None
     logger: logging.Logger = logging.getLogger(__name__)
@@ -53,8 +54,10 @@ class mirai(BaseClient):
         self.bot = Bot(self.uin, self.client_config['host'], self.client_config['port'], self.authKey, self.loop)
         self.updater = Updater(self.bot)
         self.friends = []
-
+        MiraiFactory.instance = self
         ChatMgr.slave_channel = channel
+
+        self.loop.run_until_complete(self.bot.handshake())
 
     def login(self):
         pass
@@ -173,10 +176,25 @@ class mirai(BaseClient):
     def get_chats(self) -> Collection['Chat']:
         return self.get_friends() + self.get_groups()
 
-    def get_group_member_list(self, group_id, no_cache=True):
+    def get_group_member_list(self, group_id, no_cache=True) -> List[EFBGroupMember]:
         if no_cache \
                 or not self.group_member_list.get(group_id, None):  # Key expired or not exists
             group_members = asyncio.run(self.bot.get_members(int(group_id)))
+            efb_group_members: List[EFBGroupMember] = []
+            for qq_member in group_members:
+                qq_member = MiraiMember(qq_member)
+                efb_group_members.append(EFBGroupMember(
+                    name=qq_member['memberName'],
+                    alias=self.get_friend_remark(qq_member['id']),
+                    uid=qq_member['id']
+                ))
+            self.group_member_list[group_id] = efb_group_members
+        return self.group_member_list[group_id]
+
+    async def async_get_group_member_list(self, group_id, no_cache=True) -> List[EFBGroupMember]:
+        if no_cache \
+                or not self.group_member_list.get(group_id, None):  # Key expired or not exists
+            group_members = await self.bot.get_members(int(group_id))
             efb_group_members: List[EFBGroupMember] = []
             for qq_member in group_members:
                 qq_member = MiraiMember(qq_member)
@@ -232,7 +250,7 @@ class mirai(BaseClient):
                 try:
                     for message in event.messageChain[1:]:
                         func = getattr(MiraiMessageProcessor, f'mirai_{message.type}')
-                        messages.extend(await func(message, chat))
+                        messages.extend(await func(message, event, chat))
                 except:
                     print_exc()
                 message_id = event.messageChain.get_source().id
@@ -273,16 +291,17 @@ class mirai(BaseClient):
                         text_msg.file.close()
             return True
 
-        self.loop.create_task(self.updater.run_task(shutdown_hook=self.shutdown_hook.wait))
+        # self.loop.create_task(self.updater.run_task(shutdown_hook=self.shutdown_hook.wait))
         try:
-            self.loop.run_forever()
+            self.loop.run_until_complete(self.updater.run_task(shutdown_hook=self.shutdown_hook.wait))
         finally:
             self.loop.run_until_complete(self.loop.shutdown_asyncgens())
             self.loop.close()
 
     def stop_polling(self):
+        # self.bot.session.close()
         self.shutdown_hook.set()
-        self.loop.stop()
+        # self.loop.stop()
 
     async def async_update_friend(self):
         pass
@@ -302,7 +321,7 @@ class mirai(BaseClient):
         return self.info_dict['friend'][uin].get('remark', None)
 
     async def async_get_friend_remark(self, uin: int) -> Union[None, str]:
-        logging.getLogger(__name__).info('async_get_friend_remark called')
+        # logging.getLogger(__name__).info('async_get_friend_remark called')
         count = 0
         while count <= 1:
             if not self.info_list.get('friend', None):
@@ -312,7 +331,7 @@ class mirai(BaseClient):
                 break
         if count > 1:  # Failure or friend not found
             raise Exception("Failed to update friend list!")  # todo Optimize error handling
-        logging.getLogger(__name__).info('async_get_friend_remark returned')
+        # logging.getLogger(__name__).info('async_get_friend_remark returned')
         if not self.info_dict.get('friend', None) or uin not in self.info_dict['friend']:
             return None
         return self.info_dict['friend'][uin].get('remark', None)
@@ -321,6 +340,7 @@ class mirai(BaseClient):
         # context["message"] will always be there; but context["exception"] may not
         msg = context.get("exception", context["message"])
         logging.getLogger(__name__).exception('Unhandled exception: ', exc_info=msg)
+        logging.getLogger(__name__).exception(context)
 
     def mirai_send_messages(self, chat_type: str, chat_uid: str, messages: List[BaseMessageComponent]) -> BotMessage:
         if chat_type == 'friend':
