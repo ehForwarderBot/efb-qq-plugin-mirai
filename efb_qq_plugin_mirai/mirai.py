@@ -25,7 +25,7 @@ from efb_qq_plugin_mirai.MiraiConfig import MiraiConfig
 from efb_qq_plugin_mirai.MiraiFactory import MiraiFactory
 from efb_qq_plugin_mirai.MiraiMessageProcessor import MiraiMessageProcessor
 from efb_qq_plugin_mirai.MsgDecorator import efb_text_simple_wrapper
-from efb_qq_plugin_mirai.Utils import process_quote_text
+from efb_qq_plugin_mirai.Utils import process_quote_text, download_user_avatar, download_group_avatar
 
 
 class mirai(BaseClient):
@@ -145,7 +145,14 @@ class mirai(BaseClient):
         return self.info_dict['group'].get(group_id, None)
 
     def get_chat_picture(self, chat: 'Chat') -> BinaryIO:
-        pass
+        chat_type = chat.uid.split('_')
+        if chat_type[0] == 'private':
+            private_uin = chat_type[1].split('_')[0]
+            return download_user_avatar(private_uin)
+        elif chat_type[0] == 'friend':
+            return download_user_avatar(chat_type[1])
+        elif chat_type[0] == 'group':
+            return download_group_avatar(chat_type[1])
 
     def get_chat(self, chat_uid: ChatID) -> 'Chat':
         chat_info = chat_uid.split('_')
