@@ -1,8 +1,8 @@
 import sys
 from setuptools import setup, find_packages
 
-if sys.version_info < (3, 6):
-    raise Exception("Python 3.6 or higher is required. Your version is %s." % sys.version)
+if sys.version_info < (3, 8):
+    raise Exception("Python 3.8 or higher is required. Your version is %s." % sys.version)
 
 __version__ = ""
 exec(open('efb_qq_plugin_mirai/__version__.py').read())
