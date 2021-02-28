@@ -4,9 +4,9 @@ import logging
 from typing import Dict, Optional, List
 
 from ehforwarderbot.channel import SlaveChannel
-from ehforwarderbot.chat import GroupChat, PrivateChat, ChatMember
+from ehforwarderbot.chat import GroupChat, PrivateChat, ChatMember, SystemChat
 
-from efb_qq_plugin_mirai.CustomTypes import EFBGroupChat, EFBGroupMember, EFBPrivateChat
+from efb_qq_plugin_mirai.CustomTypes import EFBGroupChat, EFBGroupMember, EFBPrivateChat, EFBSystemUser
 
 logger = logging.getLogger(__name__)
 
@@ -66,5 +66,10 @@ class ChatMgr:
             **member
         )
         return efb_chat
+
+    @staticmethod
+    def build_efb_chat_as_system_user(chat: EFBSystemUser):
+        return SystemChat(channel=ChatMgr.slave_channel,
+                          **chat)
 
 

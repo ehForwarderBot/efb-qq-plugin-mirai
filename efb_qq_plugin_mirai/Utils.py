@@ -1,8 +1,14 @@
 import logging
 import tempfile
+from typing import Dict
 
 import aiohttp
 import requests
+from ehforwarderbot import coordinator
+from ehforwarderbot.chat import SystemChatMember
+
+from efb_qq_plugin_mirai.ChatMgr import ChatMgr
+from efb_qq_plugin_mirai.CustomTypes import EFBSystemUser
 
 
 def download_user_avatar(uid: str) -> tempfile:
@@ -77,3 +83,15 @@ def process_quote_text(text: str, max_length: int) -> str:
     else:
         tgt_text = ""
     return tgt_text
+
+
+def send_msg_to_master(chat: EFBSystemUser, message: Dict):
+    if not getattr(coordinator, 'master', None):  # Master Channel not initialized
+        raise Exception("Master isn't initialized")
+    system_chat = ChatMgr.build_efb_chat_as_system_user(**chat)
+    try:
+        system_author = system_chat.get_member(SystemChatMember.SYSTEM_ID)
+    except KeyError:
+        system_author = system_chat.add_system_member()
+    
+    # fixme

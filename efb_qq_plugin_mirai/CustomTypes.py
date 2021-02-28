@@ -1,6 +1,11 @@
 from typing import Dict
 
 
+class EFBSystemUser(Dict):
+    uid: str
+    name: str
+
+
 class EFBGroupChat(Dict):
     channel: str
     uid: str

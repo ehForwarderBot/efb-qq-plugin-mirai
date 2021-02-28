@@ -9,6 +9,7 @@ from typing import Collection, BinaryIO, Dict, Any, List, Union
 from cachetools import TTLCache
 from efb_qq_slave import BaseClient
 from ehforwarderbot import Chat, Status, coordinator, MsgType, Message
+from ehforwarderbot.exceptions import EFBOperationNotSupported
 from ehforwarderbot.types import ChatID
 
 from mirai_core import Bot, Updater
@@ -17,6 +18,7 @@ from mirai_core.models import Event, Types
 from mirai_core.models.Entity import Friend, Group, Member
 from mirai_core.models.Message import At, Plain, BaseMessageComponent, BotMessage, Image
 from mirai_core.models.Types import MessageType
+from mirai_core.updater import Shutdown
 
 from efb_qq_plugin_mirai.ChatMgr import ChatMgr
 from efb_qq_plugin_mirai.CustomTypes import EFBGroupChat, EFBPrivateChat, MiraiFriend, MiraiGroup, EFBGroupMember, \
@@ -73,10 +75,19 @@ class mirai(BaseClient):
         chat_type = chat_info[0]
         chat_uid = chat_info[1]
         messages = []
+        if msg.edit:
+            try:
+                asyncio.run_coroutine_threadsafe(self.bot.recall(int(msg.uid)), self.loop)
+            except:
+                print_exc()
+                raise EFBOperationNotSupported("Failed to recall the message!\n"
+                                               "This message may have already expired.")
+        logging.getLogger(__name__).debug(f"Target: {msg.target}")
         if msg.type in [MsgType.Text, MsgType.Link]:
             if isinstance(msg.target, Message):
                 max_length = 50
-                messages.append(At(target=msg.target.author.uid))
+                uin = msg.target.author.uid.split("_")[1]
+                messages.append(At(target=int(uin), display="@"))
                 tgt_text = process_quote_text(msg.target.text, max_length)
                 msg.text = "%s\n\n%s" % (tgt_text, msg.text)
             messages.append(Plain(text=msg.text))
@@ -84,6 +95,10 @@ class mirai(BaseClient):
         elif msg.type in (MsgType.Image, MsgType.Sticker, MsgType.Animation):
             self.logger.info("[%s] Image/Sticker/Animation %s", msg.uid, msg.type)
             messages.append(Image(path=msg.file.name))
+            if msg.text:
+                messages.append(Plain(text=msg.text))
+        else:
+            raise EFBOperationNotSupported(f"Unsupported message type {msg.type}")
         return_message = self.mirai_send_messages(chat_type, chat_uid, messages)
         msg.uid = return_message.messageId
         return msg
@@ -226,7 +241,7 @@ class mirai(BaseClient):
         self.loop.set_exception_handler(self.handle_exception)
 
         @self.updater.add_handler([Event.Message])
-        async def handler(event: Event.BaseEvent):
+        async def message_handler(event: Event.BaseEvent):
             if isinstance(event, Event.Message):
                 if event.type == MessageType.GROUP.value:
                     chat = ChatMgr.build_efb_chat_as_group(EFBGroupChat(
@@ -236,7 +251,7 @@ class mirai(BaseClient):
                     author = ChatMgr.build_efb_chat_as_member(chat, EFBGroupMember(
                         name=event.member.memberName,
                         alias=await self.async_get_friend_remark(event.member.id),
-                        uid=str(event.member.id)
+                        uid=f'member_{event.member.id}'
                     ))
                 elif event.type == MessageType.FRIEND.value:
                     chat = ChatMgr.build_efb_chat_as_private(EFBPrivateChat(
@@ -298,9 +313,15 @@ class mirai(BaseClient):
                         text_msg.file.close()
             return True
 
+        @self.updater.add_handler([Event.BotOfflineEventForce])
+        async def bot_offline_force_handler(event: Event.BotOfflineEventForce):
+            pass
+
         # self.loop.create_task(self.updater.run_task(shutdown_hook=self.shutdown_hook.wait))
         try:
             self.loop.run_until_complete(self.updater.run_task(shutdown_hook=self.shutdown_hook.wait))
+        except Shutdown:
+            pass
         finally:
             self.loop.run_until_complete(self.loop.shutdown_asyncgens())
             self.loop.close()
