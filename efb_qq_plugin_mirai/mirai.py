@@ -129,7 +129,7 @@ class mirai(BaseClient):
                 name=friend_name,
                 alias=friend_remark
             )
-            self.info_dict['friend'][friend_uin] = MiraiFriend(friend)
+            self.info_dict['friend'][int(friend_uin)] = MiraiFriend(friend)
             friends.append(ChatMgr.build_efb_chat_as_private(new_friend))
         return friends
 
@@ -149,7 +149,7 @@ class mirai(BaseClient):
                 uid=f"group_{group_id}",
                 name=group_name
             )
-            self.info_dict['group'][group_id] = MiraiGroup(group)
+            self.info_dict['group'][int(group_id)] = MiraiGroup(group)
             groups.append(ChatMgr.build_efb_chat_as_group(new_group))
         return groups
 
@@ -162,7 +162,7 @@ class mirai(BaseClient):
     def get_group_info(self, group_id, no_cache=True):
         if no_cache or not self.info_dict.get('group', None):
             self.get_groups()
-        return self.info_dict['group'].get(group_id, None)
+        return self.info_dict['group'].get(int(group_id), None)
 
     def get_chat_picture(self, chat: 'Chat') -> BinaryIO:
         chat_type = chat.uid.split('_')
@@ -344,6 +344,7 @@ class mirai(BaseClient):
         pass
 
     def get_friend_remark(self, uin: int) -> Union[None, str]:
+        uin = int(uin)
         count = 0
         while count <= 1:
             if not self.info_list.get('friend', None):
@@ -359,6 +360,7 @@ class mirai(BaseClient):
 
     async def async_get_friend_remark(self, uin: int) -> Union[None, str]:
         # logging.getLogger(__name__).info('async_get_friend_remark called')
+        uin = int(uin)
         count = 0
         while count <= 1:
             if not self.info_list.get('friend', None):
