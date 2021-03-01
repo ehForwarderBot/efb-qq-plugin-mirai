@@ -112,9 +112,12 @@ class mirai(BaseClient):
 
     def get_friends(self) -> List['Chat']:  # This function should be only called by non-async function
         if not self.info_list.get('friend', None):
-            self.info_list['friend'] = self.loop.run_until_complete(self.bot.friends)
-            # friend_future = asyncio.run_coroutine_threadsafe(self.bot.friends, self.bot.loop)
-            # self.info_list['friend'] = friend_future.result()
+            if self.loop.is_running():
+                friend_future = asyncio.run_coroutine_threadsafe(self.bot.friends, self.bot.loop)
+                self.info_list['friend'] = friend_future.result()
+            else:
+                self.info_list['friend'] = self.loop.run_until_complete(self.bot.friends)
+
         friends = []
         self.info_dict['friend'] = {}
         for friend in self.info_list.get('friend', []):
@@ -132,9 +135,11 @@ class mirai(BaseClient):
 
     def get_groups(self) -> List['Chat']:  # This function should be only called by non-async function
         if not self.info_list.get('group', None):
-            self.info_list['group'] = self.loop.run_until_complete(self.bot.groups)
-            # group_future = asyncio.run_coroutine_threadsafe(self.bot.groups, self.bot.loop)
-            # self.info_list['group'] = group_future.result()
+            if self.loop.is_running():
+                group_future = asyncio.run_coroutine_threadsafe(self.bot.groups, self.bot.loop)
+                self.info_list['group'] = group_future.result()
+            else:
+                self.info_list['group'] = self.loop.run_until_complete(self.bot.groups)
         groups = []
         self.info_dict['group'] = {}
         for group in self.info_list.get('group', []):
@@ -201,7 +206,11 @@ class mirai(BaseClient):
     def get_group_member_list(self, group_id, no_cache=True) -> List[EFBGroupMember]:
         if no_cache \
                 or not self.group_member_list.get(group_id, None):  # Key expired or not exists
-            group_members = asyncio.run(self.bot.get_members(int(group_id)))
+            if self.loop.is_running():
+                group_result = asyncio.run_coroutine_threadsafe(self.bot.get_members(int(group_id)), self.loop)
+                group_members = group_result.result()
+            else:
+                group_members = asyncio.run(self.bot.get_members(int(group_id)))
             efb_group_members: List[EFBGroupMember] = []
             for qq_member in group_members:
                 qq_member = MiraiMember(qq_member)
