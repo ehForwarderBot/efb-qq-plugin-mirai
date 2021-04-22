@@ -28,6 +28,7 @@ from efb_qq_plugin_mirai.MiraiFactory import MiraiFactory
 from efb_qq_plugin_mirai.MiraiMessageProcessor import MiraiMessageProcessor
 from efb_qq_plugin_mirai.MsgDecorator import efb_text_simple_wrapper
 from efb_qq_plugin_mirai.Utils import process_quote_text, download_user_avatar, download_group_avatar
+import threading
 
 
 class mirai(BaseClient):
@@ -60,7 +61,102 @@ class mirai(BaseClient):
         MiraiFactory.instance = self
         ChatMgr.slave_channel = channel
 
+        self.loop.set_exception_handler(self.handle_exception)
         self.loop.run_until_complete(self.bot.handshake())
+
+        @self.updater.add_handler([Event.Message])
+        async def message_handler(event: Event.BaseEvent):
+            try:
+                if isinstance(event, Event.Message):
+                    if event.type == MessageType.GROUP.value:
+                        chat = ChatMgr.build_efb_chat_as_group(EFBGroupChat(
+                            uid=f"group_{event.member.group.id}",
+                            name=event.member.group.name
+                        ))
+                        author = ChatMgr.build_efb_chat_as_member(chat, EFBGroupMember(
+                            name=event.member.memberName,
+                            alias=await self.async_get_friend_remark(event.member.id),
+                            uid=f'member_{event.member.id}'
+                        ))
+                    elif event.type == MessageType.FRIEND.value:
+                        chat = ChatMgr.build_efb_chat_as_private(EFBPrivateChat(
+                            uid=f'friend_{event.friend.id}',
+                            name=event.friend.nickname,
+                            alias=event.friend.remark
+                        ))
+                        author = chat.other
+                    else:  # temp message
+                        chat = ChatMgr.build_efb_chat_as_private(EFBPrivateChat(
+                            uid=f'private_{event.member.id}_{event.member.group.id}',
+                            name=event.member.memberName
+                        ))
+                        author = chat.other
+
+                    messages = []
+                    try:
+                        for message in event.messageChain[1:]:
+                            func = getattr(MiraiMessageProcessor, f'mirai_{message.type}')
+                            messages.extend(await func(message, event, chat))
+                    except:
+                        print_exc()
+                    message_id = event.messageChain.get_source().id
+
+                    text = ""
+                    ats = {}
+                    for idx, val in enumerate(messages):
+                        flag = False
+                        if val.substitutions:
+                            flag = True
+                            for indexes, substitution in val.substitutions.items():
+                                original_begin, original_end = indexes
+                                new_begin = original_begin + len(text)
+                                new_end = original_end + len(text)
+                                ats[new_begin, new_end] = substitution
+                        if val.text:
+                            flag = True
+                            text += val.text
+                        if flag:
+                            continue
+                        val.uid = chat.uid + f"_{message_id}_{idx}"
+                        val.chat = chat
+                        val.author = author
+                        val.deliver_to = coordinator.master
+                        coordinator.send_message(val)
+                        if val.file:
+                            val.file.close()
+
+                    # Finally send the text messages
+                    if text:
+                        text_msg = efb_text_simple_wrapper(text, ats)
+                        text_msg.uid = chat.uid + f"_{message_id}"
+                        text_msg.chat = chat
+                        text_msg.author = author
+                        text_msg.deliver_to = coordinator.master
+                        coordinator.send_message(text_msg)
+                        if text_msg.file:
+                            text_msg.file.close()
+                return True
+            except:
+                print_exc()
+                return False
+
+        @self.updater.add_handler([Event.BotOfflineEventForce])
+        async def bot_offline_force_handler(event: Event.BotOfflineEventForce):
+            pass
+
+        def run():
+            nonlocal self
+            asyncio.set_event_loop(self.loop)
+            self.loop.create_task(self.updater.run_task())
+            self.loop.run_forever()
+
+        try:
+            t = threading.Thread(target=run)
+            t.daemon = True
+            t.start()
+            # self.loop.run_until_complete(self.updater.run_task(shutdown_hook=self.shutdown_hook.wait))
+        except:
+            print_exc()
 
     def login(self):
         pass
@@ -100,7 +196,8 @@ class mirai(BaseClient):
                 messages.append(Plain(text=msg.text))
         else:
             raise EFBOperationNotSupported(f"Unsupported message type {msg.type}")
-        return_message = self.mirai_send_messages(chat_type, chat_uid, messages)
+        return_message = self.mirai_send_messages(chat_type, chat_info, messages)
+        self.logger.debug(return_message)
         msg.uid = return_message.messageId
         return msg
 
@@ -242,104 +339,20 @@ class mirai(BaseClient):
         # loop = asyncio.new_event_loop()
         # self.bot.loop = loop
         # self.updater.run()
-        self.loop.run_until_complete(self.bot.session.close())
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        self.bot = Bot(self.uin, self.client_config['host'], self.client_config['port'], self.authKey, self.loop)
-        self.updater = Updater(self.bot)
-        self.shutdown_hook = asyncio.Event()
-        self.loop.set_exception_handler(self.handle_exception)
-
-        @self.updater.add_handler([Event.Message])
-        async def message_handler(event: Event.BaseEvent):
-            if isinstance(event, Event.Message):
-                if event.type == MessageType.GROUP.value:
-                    chat = ChatMgr.build_efb_chat_as_group(EFBGroupChat(
-                        uid=f"group_{event.member.group.id}",
-                        name=event.member.group.name
-                    ))
-                    author = ChatMgr.build_efb_chat_as_member(chat, EFBGroupMember(
-                        name=event.member.memberName,
-                        alias=await self.async_get_friend_remark(event.member.id),
-                        uid=f'member_{event.member.id}'
-                    ))
-                elif event.type == MessageType.FRIEND.value:
-                    chat = ChatMgr.build_efb_chat_as_private(EFBPrivateChat(
-                        uid=f'friend_{event.friend.id}',
-                        name=event.friend.nickname,
-                        alias=event.friend.remark
-                    ))
-                    author = chat.other
-                else:  # temp message
-                    chat = ChatMgr.build_efb_chat_as_private(EFBPrivateChat(
-                        uid=f'private_{event.member.id}_{event.member.group.id}',
-                        name=event.friend.nickname,
-                        alias=event.friend.remark
-                    ))
-                    author = chat.other
-
-                messages = []
-                try:
-                    for message in event.messageChain[1:]:
-                        func = getattr(MiraiMessageProcessor, f'mirai_{message.type}')
-                        messages.extend(await func(message, event, chat))
-                except:
-                    print_exc()
-                message_id = event.messageChain.get_source().id
-
-                text = ""
-                ats = {}
-                for idx, val in enumerate(messages):
-                    flag = False
-                    if val.substitutions:
-                        flag = True
-                        for indexes, substitution in val.substitutions.items():
-                            original_begin, original_end = indexes
-                            new_begin = original_begin + len(text)
-                            new_end = original_end + len(text)
-                            ats[new_begin, new_end] = substitution
-                    if val.text:
-                        flag = True
-                        text += val.text
-                    if flag:
-                        continue
-                    val.uid = chat.uid + f"_{message_id}_{idx}"
-                    val.chat = chat
-                    val.author = author
-                    val.deliver_to = coordinator.master
-                    coordinator.send_message(val)
-                    if val.file:
-                        val.file.close()
-
-                # Finally send the text messages
-                if text:
-                    text_msg = efb_text_simple_wrapper(text, ats)
-                    text_msg.uid = chat.uid + f"_{message_id}"
-                    text_msg.chat = chat
-                    text_msg.author = author
-                    text_msg.deliver_to = coordinator.master
-                    coordinator.send_message(text_msg)
-                    if text_msg.file:
-                        text_msg.file.close()
-            return True
-
-        @self.updater.add_handler([Event.BotOfflineEventForce])
-        async def bot_offline_force_handler(event: Event.BotOfflineEventForce):
-            pass
-
-        # self.loop.create_task(self.updater.run_task(shutdown_hook=self.shutdown_hook.wait))
-        try:
-            self.loop.run_until_complete(self.updater.run_task(shutdown_hook=self.shutdown_hook.wait))
-        except Shutdown:
-            pass
-        finally:
-            self.loop.run_until_complete(self.loop.shutdown_asyncgens())
-            self.loop.close()
+        # self.loop.run_until_complete(self.bot.session.close())
+        # self.loop = asyncio.new_event_loop()
+        # asyncio.set_event_loop(self.loop)
+        # self.bot = Bot(self.uin, self.client_config['host'], self.client_config['port'], self.authKey, self.loop)
+        # self.updater = Updater(self.bot)
+        # self.shutdown_hook = asyncio.Event()
+        # self.loop.set_exception_handler(self.handle_exception)
+        pass
 
     def stop_polling(self):
         # self.bot.session.close()
-        self.shutdown_hook.set()
+        # self.shutdown_hook.set()
         # self.loop.stop()
+        pass
 
     async def async_update_friend(self):
         pass
@@ -378,23 +391,26 @@ class mirai(BaseClient):
 
     def handle_exception(self, loop, context):
         # context["message"] will always be there; but context["exception"] may not
+        print_exc()
         msg = context.get("exception", context["message"])
         logging.getLogger(__name__).exception('Unhandled exception: ', exc_info=msg)
         logging.getLogger(__name__).exception(context)
 
-    def mirai_send_messages(self, chat_type: str, chat_uid: str, messages: List[BaseMessageComponent]) -> BotMessage:
+    def mirai_send_messages(self, chat_type: str, chat_uid: List[str], messages: List[BaseMessageComponent]) -> BotMessage:
+        temp_group = None
         if chat_type == 'friend':
             message_type = MessageType.FRIEND
-            target = int(chat_uid)
+            target = int(chat_uid[1])
         elif chat_type == 'group':
             message_type = MessageType.GROUP
-            target = int(chat_uid)
+            target = int(chat_uid[1])
         else:
             message_type = MessageType.TEMP
-            user_info = chat_uid.split('_')
-            chat_uid = int(user_info[0])
-            chat_origin = int(user_info[1])
-            target = Member(id=int(chat_uid), Group=Group(id=int(chat_origin)))
+            chat_user_id = int(chat_uid[1])
+            chat_origin = int(chat_uid[2])
+            target = chat_user_id
+            temp_group = chat_origin
         return asyncio.run_coroutine_threadsafe(self.bot.send_message(target=target,
                                                                       message_type=message_type,
-                                                                      message=messages), self.loop).result()
+                                                                      message=messages,
+                                                                      temp_group=temp_group), self.loop).result()
