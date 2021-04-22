@@ -52,8 +52,9 @@ class mirai(BaseClient):
         self.host = self.client_config['host']
         self.port = self.client_config['port']
         self.authKey = self.client_config['authKey']
+        self.scheme = self.client_config.get('scheme') or 'http'
         self.loop = asyncio.get_event_loop()
-        self.bot = Bot(self.uin, self.client_config['host'], self.client_config['port'], self.authKey, self.loop)
+        self.bot = Bot(self.uin, self.client_config['host'], self.client_config['port'], self.authKey, self.loop, self.scheme)
         self.updater = Updater(self.bot)
         self.friends = []
         MiraiFactory.instance = self
