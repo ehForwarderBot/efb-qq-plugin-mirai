@@ -49,11 +49,8 @@ def efb_image_wrapper(file: IO, filename: str = None, text: str = None) -> Messa
     :return: EFB Message
     """
     efb_msg = Message()
-    logging.getLogger(__name__).info("There1")
     efb_msg.file = file
-    logging.getLogger(__name__).info("There2")
     mime = magic.from_file(file.name, mime=True)
-    logging.getLogger(__name__).info("There3")
     if isinstance(mime, bytes):
         mime = mime.decode()
 
@@ -61,21 +58,16 @@ def efb_image_wrapper(file: IO, filename: str = None, text: str = None) -> Messa
         efb_msg.type = MsgType.Animation
     else:
         efb_msg.type = MsgType.Image
-    logging.getLogger(__name__).info("There4")
 
     if filename:
         efb_msg.filename = filename
     else:
         efb_msg.filename = file.name
         efb_msg.filename += '.' + str(mime).split('/')[1]  # Add extension suffix
-    logging.getLogger(__name__).info("There5")
     if text:
         efb_msg.text = text
-    logging.getLogger(__name__).info("There6")
     efb_msg.path = efb_msg.file.name
-    logging.getLogger(__name__).info("There7")
     efb_msg.mime = mime
-    logging.getLogger(__name__).info("There8")
     return efb_msg
 
 

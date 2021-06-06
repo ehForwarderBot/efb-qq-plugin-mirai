@@ -289,7 +289,6 @@ class MiraiMessageProcessor:
         except Exception as e:
             logger.warning(f"Failed to download the image! {e}")
         else:
-            logging.getLogger(__name__).info("Here5")
             return [efb_image_wrapper(f)]
 
     @staticmethod
@@ -343,7 +342,6 @@ class MiraiMessageProcessor:
         except Exception as e:
             logger.warning(f"Failed to download the image! {e}")
         else:
-            logging.getLogger(__name__).info("Here5")
             return [efb_image_wrapper(f)]
 
     @staticmethod
