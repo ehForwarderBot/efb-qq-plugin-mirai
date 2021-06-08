@@ -50,17 +50,11 @@ def download_file(url: str, retry: int = 3) -> tempfile:
 
 
 async def async_download_file(url: str, retry: int = 3) -> tempfile:
-    logging.getLogger(__name__).info("Here1")
     file = tempfile.NamedTemporaryFile()
-    logging.getLogger(__name__).info("Here2")
     async with aiohttp.ClientSession() as session:
-        logging.getLogger(__name__).info("Here3")
         async with session.get(url) as resp:
-            logging.getLogger(__name__).info("Here4")
             if resp.status == 200:
-                logging.getLogger(__name__).info("Here55")
                 file.write(await resp.read())
-    logging.getLogger(__name__).info("Here8")
     return file
 
 
