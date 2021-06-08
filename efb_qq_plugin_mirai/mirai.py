@@ -281,7 +281,7 @@ class mirai(BaseClient):
             chat_uin = int(chat_attr)
             remark_name = self.get_friend_remark(chat_uin)
             chat = ChatMgr.build_efb_chat_as_private(EFBPrivateChat(
-                uid=chat_attr,
+                uid=f"friend_{chat_attr}",
                 name=remark_name if remark_name else "",
             ))
         elif chat_type == 'group':
