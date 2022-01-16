@@ -173,6 +173,7 @@ class mirai(BaseClient):
         chat_type = chat_info[0]
         chat_uid = chat_info[1]
         messages = []
+        f: tempfile
         if msg.edit:
             try:
                 asyncio.run_coroutine_threadsafe(self.bot.recall(int(msg.uid)), self.loop)
@@ -196,24 +197,26 @@ class mirai(BaseClient):
             if msg.type != MsgType.Sticker:
                 messages.append(Image(path=msg.file.name))
             else:
-                with tempfile.NamedTemporaryFile(suffix=".gif") as f:
-                    img = PILImage.open(msg.file)
-                    try:
-                        alpha = img.split()[3]
-                        mask = PILImage.eval(alpha, lambda a: 255 if a <= 128 else 0)
-                    except IndexError:
-                        mask = PILImage.eval(img.split()[0], lambda a: 0)
-                    img = img.convert('RGB').convert('P', palette=PILImage.ADAPTIVE, colors=255)
-                    img.paste(255, mask)
-                    img.save(f, transparency=255)
-                    msg.file.close()
-                    f.seek(0)
-                    messages.append(Image(path=f.name))
+                f = tempfile.NamedTemporaryFile(suffix=".gif")
+                img = PILImage.open(msg.file)
+                try:
+                    alpha = img.split()[3]
+                    mask = PILImage.eval(alpha, lambda a: 255 if a <= 128 else 0)
+                except IndexError:
+                    mask = PILImage.eval(img.split()[0], lambda a: 0)
+                img = img.convert('RGB').convert('P', palette=PILImage.ADAPTIVE, colors=255)
+                img.paste(255, mask)
+                img.save(f, transparency=255)
+                msg.file.close()
+                f.seek(0)
+                messages.append(Image(path=f.name))
             if msg.text:
                 messages.append(Plain(text=msg.text))
         else:
             raise EFBOperationNotSupported(f"Unsupported message type {msg.type}")
         return_message = self.mirai_send_messages(chat_type, chat_info, messages)
+        if f:
+            f.close()
         self.logger.debug(return_message)
         msg.uid = return_message.messageId
         return msg
