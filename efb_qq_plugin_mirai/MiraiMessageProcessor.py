@@ -284,12 +284,15 @@ class MiraiMessageProcessor:
     @staticmethod
     async def mirai_Image(ctx: Image, event: Message, chat: Chat):
         logging.getLogger(__name__).info("Start downloading image!")
-        try:
-            f = await async_download_file(ctx.url)
-        except Exception as e:
-            logger.warning(f"Failed to download the image! {e}")
-        else:
-            return [efb_image_wrapper(f)]
+        for i in range(3):
+            try:
+                f = await async_download_file(ctx.url)
+            except Exception as e:
+                logger.warning(f"Failed to download the image! {e}. Retring...")
+            else:
+                return [efb_image_wrapper(f)]
+        logger.warning(f"Failed to download the image! Aborted.")
+        return None
 
     @staticmethod
     async def mirai_Quote(ctx: Quote, event: Message, chat: Chat):

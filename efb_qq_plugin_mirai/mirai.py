@@ -2,10 +2,11 @@
 import asyncio
 import functools
 import logging
+import tempfile
 from asyncio import Future
 from traceback import print_exc
 from typing import Collection, BinaryIO, Dict, Any, List, Union
-
+from PIL import Image as PILImage
 from cachetools import TTLCache
 from efb_qq_slave import BaseClient
 from ehforwarderbot import Chat, Status, coordinator, MsgType, Message
@@ -184,14 +185,30 @@ class mirai(BaseClient):
             if isinstance(msg.target, Message):
                 max_length = 50
                 uin = msg.target.author.uid.split("_")[1]
-                messages.append(At(target=int(uin), display="@"))
+                if uin:
+                    messages.append(At(target=int(uin), display="@"))
                 tgt_text = process_quote_text(msg.target.text, max_length)
                 msg.text = "%s\n\n%s" % (tgt_text, msg.text)
             messages.append(Plain(text=msg.text))
 
         elif msg.type in (MsgType.Image, MsgType.Sticker, MsgType.Animation):
             self.logger.info("[%s] Image/Sticker/Animation %s", msg.uid, msg.type)
-            messages.append(Image(path=msg.file.name))
+            if msg.type != MsgType.Sticker:
+                messages.append(Image(path=msg.file.name))
+            else:
+                with tempfile.NamedTemporaryFile(suffix=".gif") as f:
+                    img = PILImage.open(msg.file)
+                    try:
+                        alpha = img.split()[3]
+                        mask = PILImage.eval(alpha, lambda a: 255 if a <= 128 else 0)
+                    except IndexError:
+                        mask = PILImage.eval(img.split()[0], lambda a: 0)
+                    img = img.convert('RGB').convert('P', palette=PILImage.ADAPTIVE, colors=255)
+                    img.paste(255, mask)
+                    img.save(f, transparency=255)
+                    msg.file.close()
+                    f.seek(0)
+                    messages.append(Image(path=f.name))
             if msg.text:
                 messages.append(Plain(text=msg.text))
         else:
