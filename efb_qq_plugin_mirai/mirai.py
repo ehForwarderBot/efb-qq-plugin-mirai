@@ -53,7 +53,7 @@ class mirai(BaseClient):
         self.uin = self.client_config['qq']
         self.host = self.client_config['host']
         self.port = self.client_config['port']
-        self.authKey = self.client_config['authKey']
+        self.authKey = self.client_config['authKey'] if 'authKey' in self.client_config else self.client_config['verifyKey']
         self.scheme = self.client_config.get('scheme') or 'http'
         self.loop = asyncio.get_event_loop()
         self.bot = Bot(self.uin, self.client_config['host'], self.client_config['port'], self.authKey, self.loop, self.scheme)
@@ -173,7 +173,7 @@ class mirai(BaseClient):
         chat_type = chat_info[0]
         chat_uid = chat_info[1]
         messages = []
-        f: tempfile
+        f: tempfile = None
         if msg.edit:
             try:
                 asyncio.run_coroutine_threadsafe(self.bot.recall(int(msg.uid)), self.loop)
