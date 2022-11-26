@@ -292,6 +292,9 @@ class mirai(BaseClient):
         elif chat_type[0] == 'group':
             return download_group_avatar(chat_type[1])
 
+    def get_msg_picture(self, msg: 'Message') -> BinaryIO:
+        return download_user_avatar(msg.author.uid.split('_')[1])
+
     def get_chat(self, chat_uid: ChatID) -> 'Chat':
         chat_info = chat_uid.split('_')
         chat_type = chat_info[0]
