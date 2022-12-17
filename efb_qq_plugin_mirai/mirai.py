@@ -12,6 +12,7 @@ from efb_qq_slave import BaseClient
 from ehforwarderbot import Chat, Status, coordinator, MsgType, Message
 from ehforwarderbot.exceptions import EFBOperationNotSupported
 from ehforwarderbot.types import ChatID
+from ehforwarderbot.chat import ChatMember
 
 from mirai_core import Bot, Updater
 from mirai_core.models import Message as MiraiMessage
@@ -291,6 +292,10 @@ class mirai(BaseClient):
             return download_user_avatar(chat_type[1])
         elif chat_type[0] == 'group':
             return download_group_avatar(chat_type[1])
+
+    def get_chat_member_picture(self, chat_member: 'ChatMember') -> BinaryIO:
+        uid = chat_member.uid.split('_')[1]
+        return download_user_avatar(uid)
 
     def get_chat(self, chat_uid: ChatID) -> 'Chat':
         chat_info = chat_uid.split('_')
